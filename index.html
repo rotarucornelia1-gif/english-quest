@@ -1,0 +1,178 @@
+<!DOCTYPE html>
+<html lang="ro">
+<head>
+<meta charset="UTF-8">
+<title>English Quest - Full Game</title>
+<style>
+body { font-family:'Comic Sans MS', cursive, sans-serif; margin:0; display:flex; justify-content:center; align-items:center; min-height:100vh;
+      background: linear-gradient(-45deg,#fceabb,#f8b500,#ff9a9e,#fad0c4); background-size:400% 400%; animation:gradientBG 15s ease infinite;}
+@keyframes gradientBG {0%{background-position:0% 50%}50%{background-position:100% 50%}100%{background-position:0% 50%}}
+.container { background:#ffffffcc; padding:30px; width:700px; border-radius:15px; box-shadow:0 10px 25px rgba(0,0,0,0.3); text-align:center; position:relative;}
+h2 { color:#ff5e5e; text-shadow:2px 2px 3px #fff;}
+.info { margin-bottom:10px; font-size:16px;}
+.progress-bar, .time-bar-container, .combo-bar-container { background:#ddd; border-radius:20px; overflow:hidden; height:15px; margin-bottom:10px;}
+.progress { height:100%; width:0%; background:#4caf50; transition:0.3s; border-radius:20px;}
+.time-bar { height:100%; width:100%; background:#ff9800; transition:0.1s;}
+.combo-bar { height:100%; width:0%; background:#2196f3; transition:0.1s;}
+.badge { font-size:36px; margin:15px 0; color:gold; display:none; animation:badgePop 1s forwards;}
+@keyframes badgePop {0%{transform:scale(0);opacity:0;}50%{transform:scale(1.5);opacity:1;}100%{transform:scale(1);opacity:1;}}
+.level-background { border-radius:15px; padding:20px; transition: background 0.5s;}
+.match-container { display:flex; justify-content:space-between; margin-top:20px; flex-wrap:wrap; gap:10px;}
+.match-column { width:45%; min-height:150px; display:flex; flex-direction:column; gap:10px;}
+.match-item { padding:12px; background:#ffe; border:1px solid #ccc; border-radius:10px; cursor:grab; user-select:none; transition:0.3s;}
+.match-item.correct { background:#4caf50; transform:scale(1.15);}
+.match-item.wrong { background:#f44336; transform:scale(0.9);}
+.match-item.bounce { animation:bounce 0.5s;}
+@keyframes bounce {0%,100%{transform:translateY(0);}50%{transform:translateY(-10px);}}
+</style>
+</head>
+<body>
+
+<div class="container level-background" id="container">
+    <h2>English Quest 🎮</h2>
+    <div class="info">
+        ❤️ Vieți: <span id="lives">3</span> |
+        ⭐ Scor: <span id="score">0</span> |
+        🔥 Combo: <span id="combo">0</span> |
+        🏁 Nivel: <span id="levelNum">1</span>
+    </div>
+    <div class="progress-bar"><div id="progress" class="progress"></div></div>
+    <div class="time-bar-container"><div id="timeBar" class="time-bar"></div></div>
+    <div class="combo-bar-container"><div id="comboBar" class="combo-bar"></div></div>
+    <div class="badge" id="badge">🌟 Nivel terminat!</div>
+    <h3 id="question">Întrebare</h3>
+    <div class="match-container">
+        <div class="match-column" id="leftColumn"></div>
+        <div class="match-column" id="rightColumn"></div>
+    </div>
+</div>
+
+<audio id="correctSound" src="https://actions.google.com/sounds/v1/cartoon/clang_and_wobble.ogg"></audio>
+<audio id="wrongSound" src="https://actions.google.com/sounds/v1/cartoon/cartoon_boing.ogg"></audio>
+<audio id="comboSound" src="https://actions.google.com/sounds/v1/cartoon/rope_whip.ogg"></audio>
+
+<script>
+// Niveluri (începători + avansat)
+const levels = [
+  {name:"Începători", color:"#fceabb", time:30, items:[
+    {q:"Bună", correct:"Hello"}, {q:"La revedere", correct:"Goodbye"}, 
+    {q:"Mulțumesc", correct:"Thank you"}, {q:"Da", correct:"Yes"}, {q:"Nu", correct:"No"}
+  ]},
+  {name:"Numere", color:"#ffddcc", time:35, items:[
+    {q:"Unu", correct:"One"}, {q:"Doi", correct:"Two"}, {q:"Trei", correct:"Three"}, 
+    {q:"Patru", correct:"Four"}, {q:"Cinci", correct:"Five"}
+  ]},
+  {name:"Avansat", color:"#ccffcc", time:40, items:[
+    {q:"Fereastră", correct:"Window"}, {q:"Mașină", correct:"Car"}, 
+    {q:"Frumos", correct:"Beautiful"}, {q:"Învățare", correct:"Learning"}, {q:"Prieten", correct:"Friend"}
+  ]}
+];
+
+let currentLevel=0, score=0, lives=3, combo=0, maxCombo=0, timerInterval;
+
+const correctSound=document.getElementById("correctSound");
+const wrongSound=document.getElementById("wrongSound");
+const comboSound=document.getElementById("comboSound");
+const leftColumn=document.getElementById("leftColumn");
+const rightColumn=document.getElementById("rightColumn");
+const container=document.getElementById("container");
+
+function shuffle(array){return array.sort(()=>Math.random()-0.5);}
+
+function startTimer(duration){
+  clearInterval(timerInterval);
+  const timeBar=document.getElementById("timeBar");
+  let timeLeft=duration;
+  timeBar.style.width="100%";
+  timerInterval=setInterval(()=>{
+    timeLeft--;
+    timeBar.style.width=(timeLeft/duration*100)+"%";
+    if(timeLeft<=0){ clearInterval(timerInterval); lives=0; endLevel(); }
+  },1000);
+}
+
+function loadLevel(){
+  document.getElementById("score").innerText=score;
+  document.getElementById("lives").innerText=lives;
+  document.getElementById("combo").innerText=combo;
+  document.getElementById("levelNum").innerText=currentLevel+1;
+  
+  const level=levels[currentLevel];
+  container.style.background=level.color+"cc";
+  
+  leftColumn.innerHTML="";
+  rightColumn.innerHTML="";
+  
+  const leftItems=shuffle(level.items.map(i=>i.q));
+  const rightItems=shuffle(level.items.map(i=>i.correct));
+  
+  leftItems.forEach(text=>{
+    const div=document.createElement("div");
+    div.className="match-item";
+    div.draggable=true;
+    div.innerText=text;
+    div.addEventListener("dragstart", dragStart);
+    leftColumn.appendChild(div);
+  });
+  
+  rightItems.forEach(text=>{
+    const div=document.createElement("div");
+    div.className="match-item";
+    div.addEventListener("dragover", dragOver);
+    div.addEventListener("drop", drop);
+    div.innerText=text;
+    rightColumn.appendChild(div);
+  });
+  
+  startTimer(level.time);
+}
+
+let dragged=null;
+function dragStart(e){dragged=e.target;}
+function dragOver(e){e.preventDefault();}
+function drop(e){
+  e.preventDefault();
+  if(!dragged) return;
+  const level=levels[currentLevel];
+  const pair=level.items.find(i=>i.q===dragged.innerText && i.correct===e.target.innerText);
+  if(pair){
+    correctSound.play();
+    score+=10;
+    combo++;
+    e.target.classList.add("correct");
+    dragged.classList.add("correct");
+    e.target.removeEventListener("drop", drop);
+    dragged.draggable=false;
+    if(combo%3===0) comboSound.play();
+  }else{
+    wrongSound.play();
+    lives--;
+    combo=0;
+  }
+  dragged=null;
+  document.getElementById("score").innerText=score;
+  document.getElementById("lives").innerText=lives;
+  document.getElementById("combo").innerText=combo;
+  if(lives<=0 || leftColumn.querySelectorAll(".match-item:not(.correct)").length===0) endLevel();
+}
+
+function endLevel(){
+  clearInterval(timerInterval);
+  const badge=document.getElementById("badge");
+  badge.style.display="block";
+  setTimeout(()=>{
+    badge.style.display="none";
+    currentLevel++;
+    combo=0;
+    if(currentLevel>=levels.length){
+      alert("🎉 Ai terminat toate nivelurile! Scor final: "+score);
+      currentLevel=0; score=0; lives=3;
+    }
+    loadLevel();
+  },1500);
+}
+
+loadLevel();
+</script>
+</body>
+</html>
